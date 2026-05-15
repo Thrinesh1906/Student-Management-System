@@ -1,0 +1,17 @@
+node_modules/
+dist/
+frontend/vite.config.js
+frontend/vite.config.d.ts
+build/
+coverage/
+.env
+.env.local
+*.log
+.DS_Store
+.idea/
+.vscode/
+backups/
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl

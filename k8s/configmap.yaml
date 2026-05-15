@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sms-config
+  namespace: sms
+data:
+  NODE_ENV: production
+  PORT: "5000"
+  MONGODB_URI: mongodb://sms-mongodb:27017/student_management
+  REDIS_URL: redis://sms-redis:6379
+  CORS_ORIGIN: https://sms.example.com
+  JWT_EXPIRES_IN: 15m
+  JWT_REFRESH_EXPIRES_IN: 7d
+  METRICS_ENABLED: "true"
+  LOKI_HOST: http://loki:3100

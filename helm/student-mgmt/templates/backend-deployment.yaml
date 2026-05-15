@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "sms.fullname" . }}-backend
+  namespace: {{ .Values.global.namespace }}
+spec:
+  replicas: {{ .Values.backend.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "sms.fullname" . }}-backend
+  template:
+    metadata:
+      labels:
+        app: {{ include "sms.fullname" . }}-backend
+    spec:
+      containers:
+        - name: backend
+          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          ports:
+            - containerPort: 5000
+          env:
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sms.fullname" . }}-secrets
+                  key: jwt-secret
+            - name: MONGODB_URI
+              value: mongodb://{{ include "sms.fullname" . }}-mongodb:27017/student_management
+            - name: REDIS_URL
+              value: redis://{{ include "sms.fullname" . }}-redis:6379
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 5000
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 12 }}

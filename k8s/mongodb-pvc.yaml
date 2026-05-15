@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mongodb-pvc
+  namespace: sms
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sms-mongodb
+  namespace: sms
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sms-mongodb
+  template:
+    metadata:
+      labels:
+        app: sms-mongodb
+    spec:
+      containers:
+        - name: mongodb
+          image: mongo:7
+          ports:
+            - containerPort: 27017
+          volumeMounts:
+            - name: mongodb-storage
+              mountPath: /data/db
+      volumes:
+        - name: mongodb-storage
+          persistentVolumeClaim:
+            claimName: mongodb-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sms-mongodb
+  namespace: sms
+spec:
+  selector:
+    app: sms-mongodb
+  ports:
+    - port: 27017
+      targetPort: 27017

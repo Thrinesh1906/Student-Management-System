@@ -1,0 +1,44 @@
+global:
+  namespace: sms
+
+backend:
+  replicaCount: 2
+  image:
+    repository: yourdockerhub/sms-backend
+    tag: latest
+    pullPolicy: Always
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilization: 70
+
+frontend:
+  replicaCount: 2
+  image:
+    repository: yourdockerhub/sms-frontend
+    tag: latest
+
+ingress:
+  enabled: true
+  host: sms.example.com
+  tls: true
+
+mongodb:
+  enabled: true
+  persistence:
+    size: 10Gi
+
+redis:
+  enabled: true
+
+secrets:
+  jwtSecret: change-me-in-production
+  jwtRefreshSecret: change-me-refresh-secret

@@ -1,0 +1,43 @@
+name: CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Set Kubeconfig
+        run: |
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > kubeconfig
+          export KUBECONFIG=kubeconfig
+
+      - name: Deploy to Kubernetes
+        run: |
+          export KUBECONFIG=kubeconfig
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/configmap.yaml
+          kubectl apply -f k8s/secrets.yaml
+          kubectl apply -f k8s/mongodb-pvc.yaml
+          kubectl apply -f k8s/redis.yaml
+          kubectl set image deployment/sms-backend backend=${{ secrets.DOCKERHUB_USERNAME }}/sms-backend:${{ github.sha }} -n sms || \
+            kubectl apply -f k8s/backend-deployment.yaml
+          kubectl set image deployment/sms-frontend frontend=${{ secrets.DOCKERHUB_USERNAME }}/sms-frontend:${{ github.sha }} -n sms || \
+            kubectl apply -f k8s/frontend-deployment.yaml
+          kubectl apply -f k8s/ingress.yaml
+          kubectl rollout status deployment/sms-backend -n sms --timeout=300s
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          export KUBECONFIG=kubeconfig
+          kubectl rollout undo deployment/sms-backend -n sms
+          kubectl rollout undo deployment/sms-frontend -n sms
