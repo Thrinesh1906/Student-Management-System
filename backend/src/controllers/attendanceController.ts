@@ -4,9 +4,7 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { Attendance } from '../models/Attendance';
 import { Student } from '../models/Student';
 import { Subject } from '../models/Subject';
-import { ApiError } from '../utils/apiError';
 import { notifyAttendanceAlert } from '../services/notificationService';
-import { User } from '../models/User';
 
 export const markAttendance = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { studentId, subjectId, date, status, notes } = req.body;

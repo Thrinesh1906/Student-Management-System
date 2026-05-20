@@ -24,7 +24,7 @@ async function seed() {
     Mark.deleteMany({}),
   ]);
 
-  const admin = await User.create({
+  await User.create({
     email: 'admin@sms.local',
     password: await hashPassword('Admin@123'),
     firstName: 'System',

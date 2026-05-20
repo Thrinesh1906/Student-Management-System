@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { body, param } from 'express-validator';
+import { body } from 'express-validator';
 import * as marksController from '../controllers/marksController';
 import { authenticate, authorize } from '../middleware/auth';
 import { validate } from '../middleware/validate';
