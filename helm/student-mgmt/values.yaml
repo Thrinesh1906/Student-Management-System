@@ -4,7 +4,7 @@ global:
 backend:
   replicaCount: 2
   image:
-    repository: yourdockerhub/sms-backend
+    repository: thrinesh1906/sms-backend
     tag: latest
     pullPolicy: Always
   resources:
@@ -23,7 +23,7 @@ backend:
 frontend:
   replicaCount: 2
   image:
-    repository: yourdockerhub/sms-frontend
+    repository: thrinesh1906/sms-frontend
     tag: latest
 
 ingress:
