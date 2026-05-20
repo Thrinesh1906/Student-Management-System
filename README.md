@@ -2,6 +2,13 @@
 
 A production-grade, full-stack Student Management System built as a **portfolio-level DevOps showcase** — featuring React, Node.js, MongoDB, Redis, Docker, Kubernetes, CI/CD, monitoring, and Infrastructure as Code.
 
+## CI/CD Pipeline Status
+
+[![Backend CI](https://github.com/Thrinesh1906/Student-Management-System/actions/workflows/backend-ci.yml/badge.svg?branch=main)](https://github.com/Thrinesh1906/Student-Management-System/actions/workflows/backend-ci.yml)
+[![Frontend CI](https://github.com/Thrinesh1906/Student-Management-System/actions/workflows/frontend-ci.yml/badge.svg?branch=main)](https://github.com/Thrinesh1906/Student-Management-System/actions/workflows/frontend-ci.yml)
+[![CD Pipeline](https://github.com/Thrinesh1906/Student-Management-System/actions/workflows/cd.yml/badge.svg?branch=main)](https://github.com/Thrinesh1906/Student-Management-System/actions/workflows/cd.yml)
+[![PR Checks](https://github.com/Thrinesh1906/Student-Management-System/actions/workflows/pr-checks.yml/badge.svg)](https://github.com/Thrinesh1906/Student-Management-System/actions/workflows/pr-checks.yml)
+
 ![Architecture](docs/ARCHITECTURE.md)
 
 ## Features
