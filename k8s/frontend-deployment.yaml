@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: yourdockerhub/sms-frontend:latest
+          image: thrinesh1906/sms-frontend:latest
           ports:
             - containerPort: 80
           resources:

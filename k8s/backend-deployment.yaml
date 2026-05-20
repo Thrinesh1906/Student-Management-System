@@ -21,7 +21,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: yourdockerhub/sms-backend:latest
+          image: thrinesh1906/sms-backend:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 5000
