@@ -3,41 +3,68 @@ name: CD Pipeline
 on:
   push:
     branches: [main]
+    paths:
+      - 'k8s/**'
+      - 'helm/**'
+      - '.github/workflows/cd.yml'
   workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: production
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check Kubernetes config
+        id: k8s
+        env:
+          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
+        run: |
+          if [ -z "$KUBE_CONFIG" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::CD skipped — add KUBE_CONFIG repository secret (base64-encoded kubeconfig) to deploy to Kubernetes."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Configure kubectl
+        if: steps.k8s.outputs.configured == 'true'
         uses: azure/setup-kubectl@v4
 
-      - name: Set Kubeconfig
-        run: |
-          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > kubeconfig
-          export KUBECONFIG=kubeconfig
-
       - name: Deploy to Kubernetes
+        if: steps.k8s.outputs.configured == 'true'
+        env:
+          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
+          echo "$KUBE_CONFIG" | base64 -d > kubeconfig
           export KUBECONFIG=kubeconfig
           kubectl apply -f k8s/namespace.yaml
           kubectl apply -f k8s/configmap.yaml
           kubectl apply -f k8s/secrets.yaml
           kubectl apply -f k8s/mongodb-pvc.yaml
           kubectl apply -f k8s/redis.yaml
-          kubectl set image deployment/sms-backend backend=${{ secrets.DOCKERHUB_USERNAME }}/sms-backend:${{ github.sha }} -n sms || \
-            kubectl apply -f k8s/backend-deployment.yaml
-          kubectl set image deployment/sms-frontend frontend=${{ secrets.DOCKERHUB_USERNAME }}/sms-frontend:${{ github.sha }} -n sms || \
-            kubectl apply -f k8s/frontend-deployment.yaml
-          kubectl apply -f k8s/ingress.yaml
+          kubectl apply -f k8s/backend-deployment.yaml
+          kubectl apply -f k8s/frontend-deployment.yaml
+          kubectl apply -f k8s/nginx-deployment.yaml
+          if [ -n "$DOCKERHUB_USERNAME" ]; then
+            kubectl set image deployment/sms-backend backend="${DOCKERHUB_USERNAME}/sms-backend:${{ github.sha }}" -n sms
+            kubectl set image deployment/sms-frontend frontend="${DOCKERHUB_USERNAME}/sms-frontend:${{ github.sha }}" -n sms
+          fi
           kubectl rollout status deployment/sms-backend -n sms --timeout=300s
+          kubectl rollout status deployment/sms-frontend -n sms --timeout=300s
+          kubectl rollout status deployment/sms-nginx -n sms --timeout=300s
 
       - name: Rollback on failure
-        if: failure()
+        if: failure() && steps.k8s.outputs.configured == 'true'
+        env:
+          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
         run: |
+          echo "$KUBE_CONFIG" | base64 -d > kubeconfig
           export KUBECONFIG=kubeconfig
-          kubectl rollout undo deployment/sms-backend -n sms
-          kubectl rollout undo deployment/sms-frontend -n sms
+          kubectl rollout undo deployment/sms-backend -n sms || true
+          kubectl rollout undo deployment/sms-frontend -n sms || true
+
+      - name: CD ready (Kubernetes not configured)
+        if: steps.k8s.outputs.configured != 'true'
+        run: echo "Pipeline OK — configure KUBE_CONFIG secret to enable deploy."

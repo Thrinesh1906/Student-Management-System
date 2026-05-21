@@ -12,16 +12,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
       - name: Backend tests
         working-directory: backend
         run: |
-          npm install
+          npm ci
           npm run lint
           npm test
         env:
-          MONGODB_URI: mongodb://localhost:27017/test
-          JWT_SECRET: test
-          JWT_REFRESH_SECRET: test
+          JWT_SECRET: test-secret-min-32-chars-long
+          JWT_REFRESH_SECRET: test-refresh-secret-min-32-chars
 
   frontend-tests:
     runs-on: ubuntu-latest
@@ -30,9 +31,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
       - name: Frontend tests
         working-directory: frontend
         run: |
-          npm install
-          npm run build
+          npm ci
+          npm run lint
           npm test
+          npm run build
