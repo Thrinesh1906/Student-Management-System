@@ -1,0 +1,119 @@
+services:
+  # MongoDB Database
+  - type: pserv
+    name: sms-mongodb
+    env: docker
+    dockerfilePath: ./Dockerfile.mongodb
+    dockerContext: .
+    region: oregon
+    plan: starter
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: MONGO_INITDB_ROOT_USERNAME
+        value: admin
+      - key: MONGO_INITDB_ROOT_PASSWORD
+        scope: shared
+      - key: MONGO_INITDB_DATABASE
+        value: student_management
+    disk:
+      name: mongodb-data
+      mountPath: /data/db
+      sizeGB: 10
+
+  # Redis Cache
+  - type: pserv
+    name: sms-redis
+    env: docker
+    dockerfilePath: ./Dockerfile.redis
+    dockerContext: .
+    region: oregon
+    plan: starter
+    healthCheckPath: /
+    autoDeploy: true
+    disk:
+      name: redis-data
+      mountPath: /data
+      sizeGB: 2
+
+  # Backend API Service
+  - type: web
+    name: sms-backend
+    env: node
+    buildCommand: cd backend && npm install && npm run build
+    startCommand: cd backend && node dist/index.js
+    region: oregon
+    plan: starter
+    numInstances: 2
+    healthCheckPath: /health
+    healthCheckTimeout: 15
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: MONGODB_URI
+        fromService:
+          type: pserv
+          name: sms-mongodb
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: pserv
+          name: sms-redis
+          property: connectionString
+      - key: JWT_SECRET
+        scope: shared
+      - key: JWT_REFRESH_SECRET
+        scope: shared
+      - key: CORS_ORIGIN
+        value: https://${RENDER_EXTERNAL_URL}
+      - key: LOG_LEVEL
+        value: info
+    headers:
+      - http:
+          path: /api/*
+          methods: [GET, POST, PUT, DELETE, PATCH, OPTIONS]
+          allowedOrigins:
+            - https://${RENDER_EXTERNAL_URL}
+
+  # Frontend Service (Static Site with Node Build)
+  - type: web
+    name: sms-frontend
+    env: node
+    buildCommand: cd frontend && npm install && npm run build
+    startCommand: npm run preview -- --host 0.0.0.0
+    region: oregon
+    plan: starter
+    numInstances: 1
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: VITE_API_URL
+        value: https://sms-backend-${RENDER_GIT_COMMIT:0:7}.onrender.com/api/v1
+
+  # Nginx Reverse Proxy
+  - type: web
+    name: sms-nginx
+    env: docker
+    dockerfilePath: ./nginx/Dockerfile
+    dockerContext: .
+    region: oregon
+    plan: starter
+    numInstances: 1
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: BACKEND_HOST
+        fromService:
+          type: web
+          name: sms-backend
+          property: url
+      - key: FRONTEND_HOST
+        fromService:
+          type: web
+          name: sms-frontend
+          property: url

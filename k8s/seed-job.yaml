@@ -1,0 +1,22 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: sms-seed
+  namespace: sms
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: seed
+          image: thrinesh1906/sms-backend:latest
+          imagePullPolicy: IfNotPresent
+          command: ["node", "dist/utils/seed.js"]
+          env:
+            - name: MONGODB_URI
+              value: mongodb://sms-mongodb:27017/student_management
+            - name: JWT_SECRET
+              value: seed-secret
+            - name: JWT_REFRESH_SECRET
+              value: seed-refresh-secret
