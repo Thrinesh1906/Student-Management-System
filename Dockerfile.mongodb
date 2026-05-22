@@ -1,9 +1,0 @@
-FROM mongo:7
-
-RUN echo "MONGO_INITDB_ROOT_USERNAME=admin" > /etc/environment && \
-    echo "MONGO_INITDB_DATABASE=student_management" >> /etc/environment
-
-EXPOSE 27017
-
-HEALTHCHECK --interval=10s --timeout=5s --retries=5 \
-  CMD mongosh --eval "db.adminCommand('ping')"
