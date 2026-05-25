@@ -1,0 +1,88 @@
+{
+  "build": {
+    "builder": "dockerfile"
+  },
+  "deploy": {
+    "numReplicas": 2,
+    "startCommand": "npm start",
+    "healthcheck": {
+      "interval": 30,
+      "timeout": 10,
+      "startPeriod": 60
+    }
+  },
+  "env": {
+    "NODE_ENV": "production",
+    "PORT": "5000",
+    "VITE_API_URL": "${{ secrets.RAILWAY_URL }}/api",
+    "MONGODB_URI": "${{ secrets.MONGODB_URI }}",
+    "REDIS_URL": "${{ secrets.REDIS_URL }}",
+    "JWT_SECRET": "${{ secrets.JWT_SECRET }}",
+    "JWT_REFRESH_SECRET": "${{ secrets.JWT_REFRESH_SECRET }}",
+    "LOG_LEVEL": "info"
+  },
+  "services": [
+    {
+      "name": "sms-backend",
+      "dockerfile": "./backend/Dockerfile",
+      "port": 5000,
+      "isPrivate": false,
+      "cpu": "512m",
+      "memory": "1Gi"
+    },
+    {
+      "name": "sms-frontend",
+      "dockerfile": "./frontend/Dockerfile",
+      "port": 80,
+      "isPrivate": false,
+      "cpu": "256m",
+      "memory": "512Mi"
+    },
+    {
+      "name": "sms-mongodb",
+      "image": "mongo:7.0",
+      "port": 27017,
+      "isPrivate": true,
+      "cpu": "512m",
+      "memory": "1Gi",
+      "volume": {
+        "mountPath": "/data/db",
+        "size": "20Gi"
+      }
+    },
+    {
+      "name": "sms-redis",
+      "image": "redis:7-alpine",
+      "port": 6379,
+      "isPrivate": true,
+      "cpu": "256m",
+      "memory": "512Mi"
+    },
+    {
+      "name": "sms-nginx",
+      "dockerfile": "./nginx/Dockerfile",
+      "port": 80,
+      "isPrivate": false,
+      "cpu": "256m",
+      "memory": "256Mi"
+    }
+  ],
+  "plugins": [
+    {
+      "id": "railway-health-check",
+      "config": {
+        "endpoint": "/health",
+        "interval": 30,
+        "timeout": 10
+      }
+    },
+    {
+      "id": "railway-monitoring",
+      "config": {
+        "metrics": true,
+        "logs": true,
+        "tracing": false
+      }
+    }
+  ]
+}

@@ -1,0 +1,239 @@
+name: Deploy to Kubernetes
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'k8s/**'
+      - 'docker-compose.yml'
+      - '.github/workflows/k8s-deploy.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - development
+          - staging
+          - production
+
+env:
+  REGISTRY: docker.io
+  BACKEND_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/sms-backend
+  FRONTEND_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/sms-frontend
+  K8S_NAMESPACE: sms
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    outputs:
+      backend-tag: ${{ steps.meta-backend.outputs.tags }}
+      frontend-tag: ${{ steps.meta-frontend.outputs.tags }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      
+      - name: Extract Backend metadata
+        id: meta-backend
+        uses: docker/metadata-action@v4
+        with:
+          images: ${{ env.BACKEND_IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+      
+      - name: Extract Frontend metadata
+        id: meta-frontend
+        uses: docker/metadata-action@v4
+        with:
+          images: ${{ env.FRONTEND_IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+      
+      - name: Build and push Backend image
+        uses: docker/build-push-action@v4
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: ${{ steps.meta-backend.outputs.tags }}
+          labels: ${{ steps.meta-backend.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      
+      - name: Build and push Frontend image
+        uses: docker/build-push-action@v4
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: ${{ steps.meta-frontend.outputs.tags }}
+          labels: ${{ steps.meta-frontend.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+      
+      - name: Configure kubeconfig
+        env:
+          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
+        run: |
+          mkdir -p $HOME/.kube
+          echo "$KUBE_CONFIG" | base64 -d > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+      
+      - name: Create namespace if not exists
+        run: |
+          kubectl create namespace $K8S_NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
+      
+      - name: Create image pull secrets
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          kubectl create secret docker-registry regcred \
+            --docker-server=docker.io \
+            --docker-username=$DOCKERHUB_USERNAME \
+            --docker-password=$DOCKERHUB_TOKEN \
+            --docker-email=noreply@sms.local \
+            -n $K8S_NAMESPACE \
+            --dry-run=client -o yaml | kubectl apply -f -
+      
+      - name: Create secrets from GitHub secrets
+        env:
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
+        run: |
+          kubectl create secret generic sms-secrets \
+            --from-literal=mongodb-uri="$MONGODB_URI" \
+            --from-literal=redis-url="$REDIS_URL" \
+            --from-literal=jwt-secret="$JWT_SECRET" \
+            --from-literal=jwt-refresh-secret="$JWT_REFRESH_SECRET" \
+            -n $K8S_NAMESPACE \
+            --dry-run=client -o yaml | kubectl apply -f -
+      
+      - name: Apply ConfigMaps
+        run: |
+          kubectl apply -f k8s/configmap.yaml -n $K8S_NAMESPACE
+      
+      - name: Apply MongoDB deployment
+        run: |
+          kubectl apply -f k8s/mongodb-pvc.yaml -n $K8S_NAMESPACE || true
+      
+      - name: Apply Redis deployment
+        run: |
+          kubectl apply -f k8s/redis.yaml -n $K8S_NAMESPACE || true
+      
+      - name: Update Backend deployment image
+        run: |
+          kubectl set image deployment/sms-backend \
+            sms-backend=${{ env.BACKEND_IMAGE }}:${{ github.sha }} \
+            -n $K8S_NAMESPACE \
+            || kubectl apply -f k8s/backend-deployment.yaml -n $K8S_NAMESPACE
+      
+      - name: Update Frontend deployment image
+        run: |
+          kubectl set image deployment/sms-frontend \
+            sms-frontend=${{ env.FRONTEND_IMAGE }}:${{ github.sha }} \
+            -n $K8S_NAMESPACE \
+            || kubectl apply -f k8s/frontend-deployment.yaml -n $K8S_NAMESPACE
+      
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/sms-backend -n $K8S_NAMESPACE --timeout=5m
+          kubectl rollout status deployment/sms-frontend -n $K8S_NAMESPACE --timeout=5m
+      
+      - name: Get service endpoints
+        run: |
+          echo "=== Service Status ==="
+          kubectl get svc -n $K8S_NAMESPACE
+          echo ""
+          echo "=== Ingress Status ==="
+          kubectl get ingress -n $K8S_NAMESPACE
+          echo ""
+          echo "=== Pod Status ==="
+          kubectl get pods -n $K8S_NAMESPACE
+      
+      - name: Run health checks
+        run: |
+          # Port forward backend for health check
+          kubectl port-forward -n $K8S_NAMESPACE svc/sms-backend 5000:5000 &
+          PF_PID=$!
+          sleep 2
+          
+          # Health check
+          curl -f http://localhost:5000/health || exit 1
+          
+          kill $PF_PID
+      
+      - name: Notify Slack (Success)
+        if: success()
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK }}
+          payload: |
+            {
+              "text": "✅ SMS deployed to Kubernetes successfully",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*SMS Kubernetes Deployment Success* 🚀\n*Cluster:* ${{ env.K8S_NAMESPACE }}\n*Commit:* ${{ github.sha }}\n*Branch:* ${{ github.ref }}\n*Author:* ${{ github.actor }}"
+                  }
+                }
+              ]
+            }
+      
+      - name: Notify Slack (Failure)
+        if: failure()
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK }}
+          payload: |
+            {
+              "text": "❌ SMS Kubernetes deployment failed",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*SMS Kubernetes Deployment Failed* ❌\n*Cluster:* ${{ env.K8S_NAMESPACE }}\n*Commit:* ${{ github.sha }}\n*Branch:* ${{ github.ref }}\n*Author:* ${{ github.actor }}"
+                  }
+                }
+              ]
+            }
