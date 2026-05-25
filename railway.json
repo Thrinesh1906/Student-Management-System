@@ -4,7 +4,6 @@
   },
   "deploy": {
     "numReplicas": 2,
-    "startCommand": "npm start",
     "healthcheck": {
       "interval": 30,
       "timeout": 10,
